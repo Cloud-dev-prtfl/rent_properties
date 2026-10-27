@@ -1,0 +1,10 @@
+# Money-path and security-sensitive areas need a second reviewer (docs/delivery/03 §Git workflow).
+# Replace @rpl/tech-lead and @rpl/security with real GitHub teams or users.
+*                         @rpl/tech-lead
+/apps/credits/            @rpl/tech-lead @rpl/security
+/apps/payments/           @rpl/tech-lead @rpl/security
+/apps/leads/              @rpl/tech-lead @rpl/security
+/apps/accounts/           @rpl/tech-lead @rpl/security
+/config/settings/         @rpl/tech-lead @rpl/security
+/infra/                   @rpl/tech-lead
+/.github/                 @rpl/tech-lead

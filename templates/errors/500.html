@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}
+  {% translate "Something went wrong" %}
+{% endblock title %}
+{% comment %}Deliberately extends base.html, not the app layout: the failure may be in the layout itself.{% endcomment %}
+{% block content %}
+  <section class="page-container py-12" aria-labelledby="error-heading">
+    <p class="text-sm font-semibold text-text-muted">{% translate "Error" %} 500</p>
+    <h1 id="error-heading" class="mt-2 text-2xl font-semibold md:text-3xl">{% translate "Something went wrong" %}</h1>
+    <p class="mt-4 max-w-[70ch] text-text-muted">
+      {% translate "An unexpected error occurred and our team has been notified. Please try again in a few minutes." %}
+    </p>
+    {% if request_id %}
+      <p class="mt-4 text-sm text-text-muted">
+        {% translate "If you contact support, quote this reference:" %} <code class="tabular">{{ request_id }}</code>
+      </p>
+    {% endif %}
+    <p class="mt-8">
+      <a class="btn btn-primary" href="/">{% translate "Go to the home page" %}</a>
+    </p>
+  </section>
+{% endblock content %}

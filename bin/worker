@@ -1,0 +1,7 @@
+#!/bin/sh
+# Celery worker. Concurrency is explicit: PaaS containers report the host's CPU count.
+set -eu
+exec celery -A config worker \
+  -Q "${CELERY_QUEUES:-default,maintenance,media}" \
+  --concurrency "${WORKER_CONCURRENCY:-2}" \
+  -l "${LOG_LEVEL:-INFO}" "$@"

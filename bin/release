@@ -1,0 +1,4 @@
+#!/bin/sh
+# Release phase: run once per deploy before new code takes traffic.
+set -eu
+exec python manage.py release "$@"

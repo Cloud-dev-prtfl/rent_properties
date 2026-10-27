@@ -1,0 +1,15 @@
+{% extends "layouts/app.html" %}
+{% load i18n %}
+{% block title %}
+  {% translate "Bad request" %}
+{% endblock title %}
+{% block content %}
+  <section class="page-container py-12" aria-labelledby="error-heading">
+    <p class="text-sm font-semibold text-text-muted">{% translate "Error" %} 400</p>
+    <h1 id="error-heading" class="mt-2 text-2xl font-semibold md:text-3xl">{% translate "Bad request" %}</h1>
+    <p class="mt-4 max-w-[70ch] text-text-muted">{% translate "We could not understand that request. Please check the address or form and try again." %}</p>
+    <p class="mt-8">
+      <a class="btn btn-primary" href="{% url 'core:home' %}">{% translate "Go to the home page" %}</a>
+    </p>
+  </section>
+{% endblock content %}

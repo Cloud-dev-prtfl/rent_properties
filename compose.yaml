@@ -1,0 +1,108 @@
+# Local development stack (US-003, docs/architecture/04-infrastructure-and-deployment.md §3).
+#   docker compose up        → http://localhost:8080 (via Nginx) or http://localhost:8000 (Gunicorn)
+#   Mailpit UI               → http://localhost:8025
+# Values come from .env.example, overridden by an optional .env.
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+    target: dev
+  image: rpl-dev:latest
+  env_file:
+    - path: .env.example
+    - path: .env
+      required: false
+  volumes:
+    - .:/app
+  depends_on:
+    db:
+      condition: service_healthy
+    valkey:
+      condition: service_healthy
+
+services:
+  db:
+    # Multi-arch PostGIS build by a postgis/docker-postgis maintainer (the official image is amd64-only).
+    image: imresamu/postgis:17-3.5
+    environment:
+      POSTGRES_DB: rpl
+      POSTGRES_USER: rpl
+      POSTGRES_PASSWORD: rpl
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/10-extensions.sql:ro
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rpl -d rpl"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  valkey:
+    image: valkey/valkey:8.1-alpine
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["8025:8025", "1025:1025"]
+
+  s3:
+    # Local S3 emulator (ADR-0012). Used from M2 for listing photos.
+    image: chrislusf/seaweedfs:3.97
+    command: ["server", "-s3", "-s3.config=/etc/seaweedfs/s3.json", "-dir=/data"]
+    volumes:
+      - s3data:/data
+      - ./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+    ports: ["8333:8333"]
+
+  migrate:
+    <<: *app
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    restart: "no"
+
+  web:
+    <<: *app
+    ports: ["8000:8000"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+
+  worker:
+    <<: *app
+    command: ["celery", "-A", "config", "worker", "-Q", "default,maintenance,media", "-l", "INFO"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  beat:
+    <<: *app
+    command: ["celery", "-A", "config", "beat", "-l", "INFO"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  nginx:
+    image: nginx:1.28-alpine
+    volumes:
+      - ./docker/nginx/local.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./media:/srv/media:ro
+    ports: ["8080:80"]
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  s3data:

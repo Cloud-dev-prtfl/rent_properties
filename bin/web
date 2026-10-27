@@ -1,0 +1,9 @@
+#!/bin/sh
+# Web process: Gunicorn on $PORT (set by every PaaS; 8000 otherwise).
+# RELEASE_ON_START=true runs the release step first, for platforms without a release phase
+# (Kamal, Coolify); the advisory lock in `manage.py release` keeps concurrent starts safe.
+set -eu
+if [ "${RELEASE_ON_START:-false}" = "true" ]; then
+  python manage.py release
+fi
+exec gunicorn config.wsgi -c docker/gunicorn.conf.py "$@"

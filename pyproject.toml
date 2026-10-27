@@ -1,0 +1,160 @@
+[project]
+name = "rent-property-listing"
+version = "0.1.0"
+description = "Credit-based rental property marketplace (Django modular monolith)"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "django==5.2.18",
+    "psycopg[binary]==3.3.6",
+    "django-environ==0.14.0",
+    "django-redis==7.0.0",
+    "celery[redis]==5.6.3",
+    "django-celery-beat==2.9.0",
+    "structlog==26.1.0",
+    "sentry-sdk[django,celery]==2.73.0",
+    "opentelemetry-sdk==1.45.1",
+    "opentelemetry-exporter-otlp-proto-http==1.45.1",
+    "opentelemetry-instrumentation-django==0.66b1",
+    "opentelemetry-instrumentation-psycopg==0.66b1",
+    "opentelemetry-instrumentation-celery==0.66b1",
+    "opentelemetry-instrumentation-redis==0.66b1",
+    "gunicorn==26.2.0",
+    "whitenoise[brotli]==6.12.0",
+    "django-csp==4.0",
+    "django-htmx==1.29.0",
+    "django-template-partials==25.3",
+    "django-waffle==5.0.0",
+    "argon2-cffi==25.1.0",
+    "bcrypt==5.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff==0.17.3",
+    "mypy==2.4.0",
+    "django-stubs[compatible-mypy]==6.1.2",
+    "celery-types==0.26.0",
+    "pytest==9.1.1",
+    "pytest-django==4.14.0",
+    "pytest-cov==7.1.0",
+    "pytest-xdist==3.8.0",
+    "factory-boy==3.3.3",
+    "djlint==1.47.1",
+    "bandit==1.9.4",
+    "pip-audit==2.10.1",
+    "pre-commit==4.7.0",
+    "import-linter==2.15",
+]
+e2e = [
+    "pytest-playwright==0.10.0",
+    "axe-playwright-python==0.1.8",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = ["**/migrations/*.py", "staticfiles", "static/vendor", "docs", "ProjectDocuments"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "UP", "S", "DJ", "C4", "SIM", "RUF", "PL", "PT", "N", "A", "T20", "PIE", "RET", "BLE",
+]
+ignore = [
+    "PLR0913",  # keyword-only service signatures are allowed to be wide
+    "RUF012",   # Django Meta/Admin class attributes are mutable by convention
+    "DJ001",    # nullable strings are deliberate in the domain model (unique-when-present, unknown vs empty)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105", "S106", "PLR2004", "PLR0917"]  # pytest injects fixtures positionally
+"tests/**" = ["S101", "PLR2004"]
+"tests/load/**" = ["T201"]  # benchmark CLIs report on stdout
+"config/settings/*.py" = ["F405", "F403"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config"]
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.13"
+plugins = ["mypy_django_plugin.main"]
+strict_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+exclude = ["migrations/", "staticfiles/", "tests/e2e/"]
+
+[[tool.mypy.overrides]]
+module = "apps.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+# Tests are not type-checked: factory_boy factories are untyped, so every test would need casts.
+module = ["apps.*.tests.*", "apps.*.migrations.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["environ.*", "waffle.*", "template_partials.*", "csp.*", "factory.*", "django_celery_beat.*"]
+ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "config.settings.test"
+
+# ---------------------------------------------------------------- pytest / coverage
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py"]
+testpaths = ["apps", "tests"]
+addopts = "--strict-markers --reuse-db -p no:cacheprovider"
+markers = [
+    "e2e: browser journeys against a running stack (Playwright)",
+]
+filterwarnings = ["error::RuntimeWarning"]
+
+[tool.coverage.run]
+source = ["apps"]
+branch = true
+omit = ["*/migrations/*", "*/tests/*"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]
+
+# ---------------------------------------------------------------- djlint
+[tool.djlint]
+profile = "django"
+indent = 2
+max_line_length = 120
+ignore = "H006,H030,H031"
+
+# ---------------------------------------------------------------- bandit
+[tool.bandit]
+exclude_dirs = ["tests", "apps/core/tests", "apps/accounts/tests"]
+
+# ---------------------------------------------------------------- import-linter
+[tool.importlinter]
+root_packages = ["apps"]
+
+[[tool.importlinter.contracts]]
+name = "App layers (architecture 03 §3)"
+type = "layers"
+# Full target (03 §3): moderation|notifications > leads|payments|search|verification >
+# listings|credits > accounts|geo|analytics > core. Add each app here in the PR that creates it.
+layers = [
+    "apps.accounts",
+    "apps.core",
+]
+containers = []
+exhaustive = false
+# Factories are test-public (03 §4.2): any app's tests may build other apps' models.
+ignore_imports = ["apps.*.tests.** -> apps.*.tests.factories"]

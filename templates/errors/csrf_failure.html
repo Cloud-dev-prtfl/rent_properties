@@ -1,0 +1,16 @@
+{% extends "layouts/app.html" %}
+{% load i18n %}
+{% block title %}
+  {% translate "Your session has expired" %}
+{% endblock title %}
+{% block content %}
+  <section class="page-container py-12" aria-labelledby="error-heading">
+    <p class="text-sm font-semibold text-text-muted">{% translate "Error" %} 403</p>
+    <h1 id="error-heading"
+        class="mt-2 text-2xl font-semibold md:text-3xl">{% translate "Your session has expired" %}</h1>
+    <p class="mt-4 max-w-[70ch] text-text-muted">{% translate "For your security, this form could not be submitted. Please reload the page and try again." %}</p>
+    <p class="mt-8">
+      <a class="btn btn-primary" href="{% url 'core:home' %}">{% translate "Go to the home page" %}</a>
+    </p>
+  </section>
+{% endblock content %}

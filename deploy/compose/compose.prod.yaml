@@ -1,0 +1,133 @@
+# Self-hosted production stack for one VPS (Hetzner, on-prem …) — also deployable by Coolify.
+#   cp .env.prod.example .env.prod   # fill in secrets
+#   docker compose --env-file .env.prod -f compose.prod.yaml --profile proxy up -d --build
+# Coolify: import this file, do NOT enable the `proxy` profile (Coolify's Traefik routes to web:8000).
+# A single host has no redundancy: fine for pilots/staging; see docs/architecture/05 §6 for HA.
+name: rpl
+
+x-app: &app
+  image: ${APP_IMAGE:-rpl:latest}
+  build:
+    context: ../..
+    dockerfile: docker/Dockerfile
+    target: runtime
+  env_file: [.env.prod]
+  restart: unless-stopped
+  depends_on:
+    db:
+      condition: service_healthy
+    valkey:
+      condition: service_healthy
+
+services:
+  release:
+    <<: *app
+    command: ["bin/release"]
+    restart: "no"
+
+  web:
+    <<: *app
+    command: ["bin/web"]
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    healthcheck:
+      # The runtime image has no curl; probe with Python.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: ["bin/worker"]
+    depends_on:
+      release:
+        condition: service_completed_successfully
+
+  beat:
+    <<: *app
+    command: ["bin/beat"]   # exactly one instance
+    depends_on:
+      release:
+        condition: service_completed_successfully
+
+  db:
+    image: imresamu/postgis:17-3.5
+    restart: unless-stopped
+    shm_size: 256mb
+    environment:
+      POSTGRES_DB: rpl
+      POSTGRES_USER: rpl
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../../docker/postgres/init.sql:/docker-entrypoint-initdb.d/10-extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rpl -d rpl"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Nightly logical backup with 14-day local retention. Copy /backups off the host
+  # (rclone/restic to object storage) — a backup on the same disk is not a backup.
+  # Point-in-time recovery (RPO ≤ 5 min) needs WAL archiving (WAL-G/pgBackRest) or a managed DB.
+  db-backup:
+    image: imresamu/postgis:17-3.5
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: rpl
+      PGDATABASE: rpl
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          f=/backups/rpl-$$(date -u +%Y%m%dT%H%M%SZ).dump
+          pg_dump --format=custom --file="$$f.partial" && mv "$$f.partial" "$$f" && echo "backup ok: $$f"
+          find /backups -name 'rpl-*.dump' -mtime +14 -delete
+          sleep "$$BACKUP_INTERVAL_SECONDS"
+        done
+    volumes:
+      - pgbackups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
+  valkey:
+    image: valkey/valkey:8.1-alpine
+    restart: unless-stopped
+    # Shared by cache and Celery broker: never evict (tasks), persist across restarts.
+    command: ["valkey-server", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
+    volumes:
+      - valkeydata:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  caddy:
+    image: caddy:2.10-alpine
+    profiles: ["proxy"]
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env.prod}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  pgbackups:
+  valkeydata:
+  caddydata:
+  caddyconfig:

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Celery beat scheduler. Run EXACTLY ONE instance per environment.
+set -eu
+exec celery -A config beat -l "${LOG_LEVEL:-INFO}" "$@"

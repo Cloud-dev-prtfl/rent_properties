@@ -1,0 +1,4 @@
+{
+  "htmx.min.js": {"version": "2.0.11", "url": "https://cdn.jsdelivr.net/npm/htmx.org@2.0.11/dist/htmx.min.js", "sha256": "d6fdc75f204e6bdefa99b69bf1e6d4ac69b8a364f77929f45c13476b4000f717"},
+  "alpine-csp.min.js": {"version": "3.17.5", "url": "https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js", "sha256": "48c170c92032e527cbae71b8ce75cf1f96ca06fa869a6120ef0fe438d8e92c36"}
+}
