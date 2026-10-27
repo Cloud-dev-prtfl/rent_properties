@@ -1,0 +1,87 @@
+# Pull-request and main-branch pipeline (US-010, docs/architecture/04-infrastructure-and-deployment.md §8).
+# Deploy-to-dev (ECR push, migration task, ECS rolling deploy, ZAP baseline) is added with the
+# Terraform dev environment in the M0 infrastructure chunk.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint, types, tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build dev image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: dev
+          tags: rpl-dev:latest
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build CSS (class scan needs templates)
+        run: make css
+
+      - name: Start PostgreSQL + Valkey
+        run: docker compose up -d --wait db valkey
+
+      - name: Quality gate (ruff, mypy, import-linter, djlint, migrations, bandit, pytest + coverage)
+        run: make check
+
+      - name: Dependency audit
+        run: docker compose run --rm --no-deps web pip-audit --strict --progress-spinner off
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Findings go to the job summary + SARIF artifact; reviewed false positives in .gitleaksignore.
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+  image:
+    name: Production image + vulnerability scan
+    runs-on: ubuntu-24.04
+    needs: checks
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: runtime
+          tags: rpl:${{ github.sha }}
+          build-args: APP_RELEASE=${{ github.sha }}
+          load: true
+          cache-from: type=gha
+      - name: Trivy scan (fail on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          image-ref: rpl:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

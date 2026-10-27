@@ -1,0 +1,11 @@
+# Automatic HTTPS (Let's Encrypt) for SITE_ADDRESS, e.g. www.example.com.
+# Caddy sets X-Forwarded-For/-Proto; the app trusts one hop (TRUSTED_PROXY_COUNT=1).
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	request_body {
+		max_size 6MB
+	}
+	reverse_proxy web:8000 {
+		health_uri /healthz
+	}
+}

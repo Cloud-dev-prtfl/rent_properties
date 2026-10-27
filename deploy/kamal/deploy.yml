@@ -1,0 +1,78 @@
+# Kamal 2 (https://kamal-deploy.org). Run from the repo root:
+#   kamal setup  -c deploy/kamal/deploy.yml     # first time: installs Docker, accessories, proxy
+#   kamal deploy -c deploy/kamal/deploy.yml
+# Hosts, registry and domain are placeholders. Secrets come from .kamal/secrets (see secrets.example).
+service: rpl
+image: your-org/rpl
+
+servers:
+  web:
+    hosts:
+      - 192.0.2.10
+  worker:
+    hosts:
+      - 192.0.2.10
+    cmd: bin/worker
+  beat:
+    hosts:
+      - 192.0.2.10          # exactly one host for beat
+    cmd: bin/beat
+
+proxy:
+  ssl: true                 # Let's Encrypt via kamal-proxy
+  host: www.example.com
+  app_port: 8000
+  healthcheck:
+    path: /healthz
+    interval: 3
+    timeout: 3
+
+registry:
+  server: ghcr.io
+  username: your-org
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: amd64
+  dockerfile: docker/Dockerfile   # last stage = runtime
+
+env:
+  clear:
+    DJANGO_SETTINGS_MODULE: config.settings.production
+    APP_ENV: prod
+    RELEASE_ON_START: "true"      # no release phase in Kamal; advisory lock makes this safe
+    TRUSTED_PROXY_COUNT: "1"      # kamal-proxy
+    FORWARDED_ALLOW_IPS: "*"
+    LOG_JSON: "true"
+  secret:
+    - DJANGO_SECRET_KEY
+    - DJANGO_ALLOWED_HOSTS
+    - DJANGO_CSRF_TRUSTED_ORIGINS
+    - DATABASE_URL                # postgis://rpl:<pw>@rpl-db:5432/rpl (accessory) or a managed DB
+    - REDIS_URL                   # redis://rpl-valkey:6379/0
+    - EMAIL_URL
+    - SENTRY_DSN
+
+accessories:
+  db:
+    image: imresamu/postgis:17-3.5
+    host: 192.0.2.10
+    port: "127.0.0.1:5432:5432"
+    env:
+      clear:
+        POSTGRES_DB: rpl
+        POSTGRES_USER: rpl
+      secret:
+        - POSTGRES_PASSWORD
+    files:
+      - docker/postgres/init.sql:/docker-entrypoint-initdb.d/10-extensions.sql
+    directories:
+      - data:/var/lib/postgresql/data
+  valkey:
+    image: valkey/valkey:8.1-alpine
+    host: 192.0.2.10
+    port: "127.0.0.1:6379:6379"
+    cmd: valkey-server --maxmemory-policy noeviction --appendonly yes
+    directories:
+      - data:/data

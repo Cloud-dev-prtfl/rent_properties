@@ -1,0 +1,5 @@
+# Reviewed false positives (gitleaks fingerprint format: <commit>:<file>:<rule>:<line>).
+# Add an entry only after confirming the match is not a credential, with the reason.
+
+# Data-classification table row ("... staff MFA secrets, KYC ...") — prose, not a key.
+0d76e1e15b2ecc1a0d7026c1fa558e01f05a42c5:docs/quality/01-security-and-compliance.md:generic-api-key:44

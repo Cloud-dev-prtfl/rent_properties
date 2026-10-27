@@ -1,0 +1,20 @@
+# Heroku container stack: `heroku stack:set container`. The Dockerfile's last stage is `runtime`.
+# Add-ons: Heroku Postgres (PostGIS is created by the release migration) and Heroku Key-Value
+# Store (provides REDIS_URL; append ?ssl_cert_reqs=none for rediss:// with Heroku's certificate).
+build:
+  docker:
+    web: docker/Dockerfile
+release:
+  image: web
+  command:
+    - bin/release
+run:
+  web: bin/web
+  worker:
+    command:
+      - bin/worker
+    image: web
+  beat:
+    command:
+      - bin/beat
+    image: web

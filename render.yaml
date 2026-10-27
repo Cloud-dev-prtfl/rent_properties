@@ -1,0 +1,83 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec). Plans/regions are placeholders —
+# choose at go-live. Secrets marked `sync: false` are entered in the dashboard, never committed.
+envVarGroups:
+  - name: rpl-shared
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.production
+      - key: APP_ENV
+        value: prod
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false            # e.g. www.example.com,rpl-web.onrender.com
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        sync: false            # e.g. https://www.example.com
+      - key: EMAIL_URL
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: TRUSTED_PROXY_COUNT
+        value: "1"             # Render's router; use 2 (or CLIENT_IP_HEADER) behind Cloudflare
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
+      - key: DATABASE_SSLMODE
+        value: require
+
+services:
+  - type: web
+    name: rpl-web
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile
+    dockerContext: .
+    dockerCommand: bin/web
+    preDeployCommand: bin/release
+    healthCheckPath: /healthz
+    plan: standard
+    envVars:
+      - fromGroup: rpl-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: rpl-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: rpl-kv, property: connectionString }
+
+  - type: worker
+    name: rpl-worker
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile
+    dockerContext: .
+    dockerCommand: bin/worker
+    plan: standard
+    envVars:
+      - fromGroup: rpl-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: rpl-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: rpl-kv, property: connectionString }
+
+  - type: worker
+    name: rpl-beat            # exactly one instance — never scale this service
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile
+    dockerContext: .
+    dockerCommand: bin/beat
+    plan: starter
+    envVars:
+      - fromGroup: rpl-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: rpl-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: rpl-kv, property: connectionString }
+
+  - type: keyvalue
+    name: rpl-kv
+    plan: standard
+    maxmemoryPolicy: noeviction   # shared by cache and Celery broker: tasks must never be evicted
+    ipAllowList: []               # private network only
+
+databases:
+  - name: rpl-db
+    databaseName: rpl
+    plan: basic-1gb
+    postgresMajorVersion: "17"
+    ipAllowList: []
