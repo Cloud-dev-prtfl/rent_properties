@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Django
+staticfiles/
+static/dist/
+media/
+*.mo
+
+# Local config & tools
+.env
+.tools/
+.DS_Store
+.idea/
+.vscode/
+test-results/
+playwright-report/
+
+# Deployment secrets
+.env.prod
+.kamal/secrets
+
+# Client source documents are confidential: kept locally, never published (repo is public)
+ProjectDocuments/
